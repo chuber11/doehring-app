@@ -9,7 +9,6 @@ repositories {
 
 android {
     compileSdkVersion 30
-    buildToolsVersion "30.0.2"
 
     defaultConfig {
         applicationId "org.pytorch.demo.speechrecognition"
@@ -31,6 +30,7 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    namespace 'org.pytorch.demo.speechrecognition'
 }
 
 dependencies {
@@ -40,5 +40,5 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.2'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
 
-    implementation 'org.pytorch:pytorch_android_lite:1.10.0'
+    implementation 'org.pytorch:pytorch_android_lite:2.1.0'
 }

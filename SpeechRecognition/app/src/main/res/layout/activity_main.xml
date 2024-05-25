@@ -8,27 +8,31 @@
 
     <Button
         android:id="@+id/btnRecognize"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="200dp"
-        android:text="Start"
+        android:layout_width="403dp"
+        android:layout_height="109dp"
+        android:layout_marginBottom="40dp"
+        android:text="Press and hold to record"
+	android:textSize="30sp"
         android:textAllCaps="false"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/tvResult"
-        android:layout_width="350dp"
-        android:layout_height="100dp"
-        android:layout_marginTop="50dp"
+        android:layout_width="357dp"
+        android:layout_height="526dp"
+        android:layout_marginTop="188dp"
         android:gravity="center"
         android:hint=""
         android:textAlignment="center"
-        android:textSize="18sp"
+        android:textSize="30sp"
+        app:layout_constraintBottom_toTopOf="@+id/btnRecognize"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.504"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btnRecognize" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.039" />
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>

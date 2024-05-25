@@ -1,15 +1,15 @@
 package org.pytorch.demo.speechrecognition;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.util.Log;
 import android.view.View;
+import android.view.MotionEvent;
 import android.widget.Button;
 import android.widget.TextView;
 
@@ -25,87 +25,118 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.FloatBuffer;
+import java.util.List;
+import java.util.ArrayList;
 
 import org.pytorch.LiteModuleLoader;
 
+enum StateOption {
+    WAITING, LOADING, RECORDING, RECOGNIZING
+}
+
+class State {
+    private StateOption state = StateOption.WAITING;
+    private Button mButton;
+    private TextView mTextView;
+    private MainActivity main;
+
+    public State(Button mButton, TextView mTextView, MainActivity main) {
+        this.mButton = mButton;
+        this.mTextView = mTextView;
+        this.main = main;
+    }
+
+    public void set(StateOption new_state) {
+        set(new_state, null);
+    }
+    public void set(StateOption new_state, String result) {
+        main.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if(new_state == StateOption.WAITING) {
+                    mTextView.setText(result);
+                    mButton.setEnabled(true);
+                    mButton.setText("Press and hold to record");
+                } else if(new_state == StateOption.LOADING) {
+                    mButton.setText("Model is loading, please wait...");
+                } else if(new_state == StateOption.RECORDING) {
+                    mButton.setText("Hold to continue recording...");
+                } else if(new_state == StateOption.RECOGNIZING) {
+                    mButton.setEnabled(false);
+                    mButton.setText("Generating answer...");
+                }
+            }
+        });
+        state = new_state;
+    }
+
+    public boolean is(StateOption other_state) {
+        return state == other_state;
+    }
+}
 
 public class MainActivity extends AppCompatActivity implements Runnable {
     private static final String TAG = MainActivity.class.getName();
 
     private Module module;
-    private TextView mTextView;
-    private Button mButton;
 
-    private final static int REQUEST_RECORD_AUDIO = 13;
-    private final static int AUDIO_LEN_IN_SECOND = 6;
-    private final static int SAMPLE_RATE = 16000;
-    private final static int RECORDING_LENGTH = SAMPLE_RATE * AUDIO_LEN_IN_SECOND;
-
-    private final static String LOG_TAG = MainActivity.class.getSimpleName();
-
-    private int mStart = 1;
-    private HandlerThread mTimerThread;
-    private Handler mTimerHandler;
-    private Runnable mRunnable = new Runnable() {
-        @Override
-        public void run() {
-            mTimerHandler.postDelayed(mRunnable, 1000);
-
-            MainActivity.this.runOnUiThread(
-                    () -> {
-                        mButton.setText(String.format("Listening - %ds left", AUDIO_LEN_IN_SECOND - mStart));
-                        mStart += 1;
-                    });
-        }
-    };
+    private State state;
 
     @Override
     protected void onDestroy() {
-        stopTimerThread();
         super.onDestroy();
     }
 
-    protected void stopTimerThread() {
-        mTimerThread.quitSafely();
-        try {
-            mTimerThread.join();
-            mTimerThread = null;
-            mTimerHandler = null;
-            mStart = 1;
-        } catch (InterruptedException e) {
-            Log.e(TAG, "Error on stopping background thread", e);
-        }
-    }
-
-
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mButton = findViewById(R.id.btnRecognize);
-        mTextView = findViewById(R.id.tvResult);
+        Button mButton = findViewById(R.id.btnRecognize);
+        TextView mTextView = findViewById(R.id.tvResult);
 
-        mButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                mButton.setText(String.format("Listening - %ds left", AUDIO_LEN_IN_SECOND));
-                mButton.setEnabled(false);
+        state = new State(mButton, mTextView,this);
 
-                Thread thread = new Thread(MainActivity.this);
-                thread.start();
+        mButton.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        // Handle button press
+                        state.set(StateOption.RECORDING);
+                        Thread thread = new Thread(MainActivity.this);
+                        thread.start();
+                        return true; // Indicate the event is handled
 
-                mTimerThread = new HandlerThread("Timer");
-                mTimerThread.start();
-                mTimerHandler = new Handler(mTimerThread.getLooper());
-                mTimerHandler.postDelayed(mRunnable, 1000);
-
+                    case MotionEvent.ACTION_UP:
+                        // Handle button release
+                        if(state.is(StateOption.RECORDING)) {
+                            state.set(StateOption.RECOGNIZING);
+                        }
+                        return true; // Indicate the event is handled
+                }
+                return false;
             }
         });
+
+        Thread thread = new Thread(new Runnable() {
+                public void run() {
+                    if (module == null) {
+                        module = LiteModuleLoader.load(assetFilePath(getApplicationContext(),
+                                "wav2vec2_2.3.ptl"));
+
+                    }
+                }
+        });
+        thread.start();
+
         requestMicrophonePermission();
     }
 
     private void requestMicrophonePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            final int REQUEST_RECORD_AUDIO = 13;
             requestPermissions(
                     new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
         }
@@ -133,79 +164,76 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         return null;
     }
 
-    private void showTranslationResult(String result) {
-        mTextView.setText(result);
+    public static float[] convertListToFloatArray(List<Float> floatList) {
+        float[] floatArray = new float[floatList.size()];
+        for (int i = 0; i < floatList.size(); i++) {
+            floatArray[i] = floatList.get(i);
+        }
+        return floatArray;
     }
 
     public void run() {
+        state.set(StateOption.RECORDING);
+
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+
+        final int SAMPLE_RATE = 16000;
 
         int bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         AudioRecord record = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                 bufferSize);
 
         if (record.getState() != AudioRecord.STATE_INITIALIZED) {
-            Log.e(LOG_TAG, "Audio Record can't initialize!");
+            Log.e(TAG, "Audio Record can't initialize!");
             return;
         }
+
         record.startRecording();
 
         long shortsRead = 0;
-        int recordingOffset = 0;
-        short[] audioBuffer = new short[bufferSize / 2];
-        short[] recordingBuffer = new short[RECORDING_LENGTH];
 
-        while (shortsRead < RECORDING_LENGTH) {
+        final int AUDIO_LEN_IN_SECOND_MAX = 20;
+        final int RECORDING_LENGTH_MAX = SAMPLE_RATE * AUDIO_LEN_IN_SECOND_MAX;
+
+        short[] audioBuffer = new short[bufferSize / 2];
+        List<Float> recordingBuffer = new ArrayList<>();
+
+        while (state.is(StateOption.RECORDING) && shortsRead < RECORDING_LENGTH_MAX) {
             int numberOfShort = record.read(audioBuffer, 0, audioBuffer.length);
             shortsRead += numberOfShort;
-            System.arraycopy(audioBuffer, 0, recordingBuffer, recordingOffset, numberOfShort);
-            recordingOffset += numberOfShort;
+            for (int i = 0; i < numberOfShort; ++i) {
+                recordingBuffer.add(audioBuffer[i] / (float)Short.MAX_VALUE);
+            }
         }
+        state.set(StateOption.RECOGNIZING);
 
         record.stop();
         record.release();
-        stopTimerThread();
 
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                mButton.setText("Recognizing...");
-            }
-        });
-
-        float[] floatInputBuffer = new float[RECORDING_LENGTH];
-
-        // feed in float values between -1.0f and 1.0f by dividing the signed 16-bit inputs.
-        for (int i = 0; i < RECORDING_LENGTH; ++i) {
-            floatInputBuffer[i] = recordingBuffer[i] / (float)Short.MAX_VALUE;
-        }
-
+        float[] floatInputBuffer = convertListToFloatArray(recordingBuffer);
         final String result = recognize(floatInputBuffer);
 
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                showTranslationResult(result);
-                mButton.setEnabled(true);
-                mButton.setText("Start");
-            }
-        });
+        state.set(StateOption.WAITING, result);
     }
 
     private String recognize(float[] floatInputBuffer) {
-        if (module == null) {
-            module = LiteModuleLoader.load(assetFilePath(getApplicationContext(), "wav2vec2.ptl"));
+        while (module == null) {
+            state.set(StateOption.LOADING);
+
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Log.e(TAG, "Thread.sleep(100) was interrupted!");
+            }
+        }
+        state.set(StateOption.RECOGNIZING);
+
+        FloatBuffer inTensorBuffer = Tensor.allocateFloatBuffer(floatInputBuffer.length);
+        for (float val : floatInputBuffer) {
+            inTensorBuffer.put(val);
         }
 
-        double wav2vecinput[] = new double[RECORDING_LENGTH];
-        for (int n = 0; n < RECORDING_LENGTH; n++)
-            wav2vecinput[n] = floatInputBuffer[n];
-
-        FloatBuffer inTensorBuffer = Tensor.allocateFloatBuffer(RECORDING_LENGTH);
-        for (double val : wav2vecinput)
-            inTensorBuffer.put((float)val);
-
-        Tensor inTensor = Tensor.fromBlob(inTensorBuffer, new long[]{1, RECORDING_LENGTH});
+        Tensor inTensor = Tensor.fromBlob(inTensorBuffer, new long[]{1, floatInputBuffer.length});
         final String result = module.forward(IValue.from(inTensor)).toStr();
 
         return result;
