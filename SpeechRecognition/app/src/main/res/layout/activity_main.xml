@@ -8,93 +8,87 @@
 
     <Button
         android:id="@+id/btnRecognize"
-        android:layout_width="300dp"
-        android:layout_height="81dp"
-        android:layout_marginBottom="4dp"
+        android:layout_width="339dp"
+        android:layout_height="82dp"
+        android:layout_marginBottom="16dp"
         android:text="Drücken und gedrückt halten zum Aufnehmen"
         android:textAllCaps="false"
         android:textSize="25sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <Button
+        android:id="@+id/btnPlay"
+        android:layout_width="167dp"
+        android:layout_height="77dp"
+        android:enabled="false"
+        android:text="Abspielen"
+        android:textAllCaps="false"
+        android:textSize="25sp"
+        app:layout_constraintBottom_toTopOf="@+id/btnRecognize"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.127"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tv2" />
+        app:layout_constraintTop_toBottomOf="@+id/tvLatencyASR"
+        app:layout_constraintVertical_bias="0.8" />
+
+    <Button
+        android:id="@+id/btnBack"
+        android:layout_width="167dp"
+        android:layout_height="77dp"
+        android:enabled="false"
+        android:text="Zurück"
+        android:textAllCaps="false"
+        android:textSize="25sp"
+        app:layout_constraintBottom_toTopOf="@+id/btnRecognize"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.868"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvLatencyASR"
+        app:layout_constraintVertical_bias="0.8" />
 
     <TextView
-        android:id="@+id/tv1"
+        android:id="@+id/tvText"
         android:layout_width="338dp"
         android:layout_height="416dp"
-        android:layout_marginTop="164dp"
+        android:layout_marginTop="56dp"
         android:gravity="center"
         android:hint=""
         android:textAlignment="center"
         android:textSize="25sp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintHorizontal_bias="0.493"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
-        android:id="@+id/tv2"
-        android:layout_width="338dp"
+        android:id="@+id/tvLatencyASR"
+        android:layout_width="155dp"
         android:layout_height="32dp"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="48dp"
         android:gravity="center"
         android:hint=""
         android:textAlignment="center"
         android:textSize="15sp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintHorizontal_bias="0.121"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tv1" />
+        app:layout_constraintTop_toBottomOf="@+id/tvText" />
 
-    <RadioGroup
-        android:id="@+id/radio"
-        android:layout_width="228dp"
-        android:layout_height="151dp"
-        android:layout_marginTop="4dp"
-        android:orientation="vertical"
+    <TextView
+        android:id="@+id/tvLatencyTTS"
+        android:layout_width="155dp"
+        android:layout_height="32dp"
+        android:layout_marginTop="48dp"
+        android:gravity="center"
+        android:hint=""
+        android:textAlignment="center"
+        android:textSize="15sp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintHorizontal_bias="0.875"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <RadioButton
-            android:id="@+id/model_kit"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:checked="true"
-            android:text="KIT Server"
-            android:textSize="25sp" />
-
-        <RadioButton
-            android:id="@+id/model_small"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Kleines Modell"
-            android:textSize="25sp" />
-
-        <RadioButton
-            android:id="@+id/model_large"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Großes Modell"
-            android:textSize="25sp" />
-
-        <View
-            android:id="@+id/divider"
-            android:layout_width="match_parent"
-            android:layout_height="5dp"
-            android:background="?android:attr/listDivider" />
-
-        <CheckBox
-            android:id="@+id/play_audio"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:checked="true"
-            android:text="Audio abspielen"
-            android:textSize="25sp" />
-    </RadioGroup>
+        app:layout_constraintTop_toBottomOf="@+id/tvText" />
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>

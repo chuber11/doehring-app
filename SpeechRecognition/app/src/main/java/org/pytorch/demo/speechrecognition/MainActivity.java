@@ -1,7 +1,6 @@
 package org.pytorch.demo.speechrecognition;
 
 import android.annotation.SuppressLint;
-import android.app.ActivityManager;
 import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -12,36 +11,16 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
-import android.view.View;
 import android.view.MotionEvent;
 import android.widget.Button;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
-import android.widget.CheckBox;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.nio.ShortBuffer;
-import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Map;
 
-import ai.onnxruntime.OnnxValue;
-import ai.onnxruntime.OrtEnvironment;
-import ai.onnxruntime.OrtSession;
-import ai.onnxruntime.OrtException;
-import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.extensions.OrtxPackage;
-import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -52,12 +31,16 @@ import com.google.gson.Gson;
 
 import org.json.JSONObject;
 
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
 enum StateOption {
-    WAITING, LOADING, RECORDING, RECOGNIZING
+    INIT, RECORDING, RECOGNIZING, GENERATING, PLAYING, SILENCE
 }
 
 class State {
-    private StateOption state = null;
+    protected StateOption state = StateOption.INIT;
     private MainActivity main;
 
     public State(MainActivity main) {
@@ -65,65 +48,74 @@ class State {
     }
 
     public void set(StateOption new_state) {
-        set(new_state, null);
+        set(new_state, null, null);
     }
-    public void set(StateOption new_state, String result) {
+    public void set(StateOption new_state, String result, String latency) {
         main.runOnUiThread(() -> {
-            if(new_state == StateOption.WAITING) {
-                if(result != null) {
-                    this.main.mTextView.setText(result);
-                }
-                this.main.mButton.setEnabled(true);
-                this.setEnabled(true);
-                this.main.mButton.setText("Drücken und gedrückt halten zum Aufnehmen");
-            } else if(new_state == StateOption.LOADING) {
-                this.setEnabled(false);
-                this.main.mButton.setEnabled(false);
-                this.main.mButton.setText("Modell lädt, bitte warten...");
-            } else if(new_state == StateOption.RECORDING) {
-                this.setEnabled(false);
-                this.main.mButton.setText("Gedrückt halten um weiter aufzunehmen...");
-            } else if(new_state == StateOption.RECOGNIZING) {
-                this.main.mButton.setEnabled(false);
-                this.setEnabled(false);
-                this.main.mTextView.setText("");
-                this.main.mTextView2.setText("");
-                this.main.mButton.setText("Antwort wird generiert...");
+            switch(new_state) {
+                case RECORDING:
+                    this.main.buttonRecord.setText("Gedrückt halten um weiter aufzunehmen...");
+                    this.main.buttonPlay.setEnabled(false);
+                    this.main.buttonBack.setEnabled(false);
+                    break;
+                case RECOGNIZING:
+                    this.main.buttonRecord.setEnabled(false);
+                    this.main.buttonPlay.setEnabled(false);
+                    this.main.buttonBack.setEnabled(false);
+                    this.main.textViewText.setText("");
+                    this.main.textViewLatencyASR.setText("");
+                    this.main.textViewLatencyTTS.setText("");
+                    this.main.buttonRecord.setText("Audio wird transkribiert...");
+                    break;
+                case GENERATING:
+                    this.main.buttonRecord.setEnabled(false);
+                    this.main.buttonRecord.setText("Audio wird generiert...");
+                    this.main.buttonPlay.setEnabled(false);
+                    this.main.buttonPlay.setText("Abspielen");
+                    break;
+                case PLAYING:
+                    this.main.buttonPlay.setText("Stop");
+                    this.main.buttonRecord.setText("Drücken und gedrückt halten zum Aufnehmen");
+                    break;
+                case SILENCE:
+                    if(result != null) { // ASR finished
+                        this.main.textViewText.setText(result);
+                        if(latency != null) {
+                            this.main.textViewLatencyASR.setText(latency);
+                        }
+                        this.main.buttonPlay.setEnabled(false);
+                        this.main.buttonBack.setEnabled(true);
+                        this.main.buttonRecord.setText("Drücken und gedrückt halten zum Aufnehmen");
+                    } else if (latency != null) { // TTS finished
+                        this.main.textViewLatencyTTS.setText(latency);
+                        this.main.buttonRecord.setEnabled(true);
+                        this.main.buttonPlay.setEnabled(true);
+                        this.main.buttonRecord.setText("Drücken und gedrückt halten zum Aufnehmen");
+                        this.main.buttonPlay.setText("Abspielen");
+                    } else { // Playing finished
+                        this.main.buttonPlay.setText("Abspielen");
+                    }
+                    break;
             }
         });
         state = new_state;
-    }
-
-    private void setEnabled(boolean enabled) {
-        for (int i = 0; i < this.main.mRadioGroup.getChildCount(); i++) {
-            View child = this.main.mRadioGroup.getChildAt(i);
-
-            if (child instanceof RadioButton) {
-                RadioButton radioButton = (RadioButton) child;
-                radioButton.setEnabled(enabled);
-            }
-        }
-        this.main.mCheckbox.setEnabled(enabled);
-    }
-
-    public boolean is(StateOption other_state) {
-        return state == other_state;
     }
 }
 
 public class MainActivity extends AppCompatActivity implements Runnable {
     private static final String TAG = MainActivity.class.getName();
 
-    private OrtEnvironment ortEnvironment;
-    private OrtSession ortSession;
-
     private State state;
+    private byte[] audioData = null;
 
-    protected Button mButton;
-    protected TextView mTextView;
-    protected TextView mTextView2;
-    protected RadioGroup mRadioGroup;
-    protected CheckBox mCheckbox;
+    protected Button buttonRecord;
+    protected Button buttonPlay;
+    protected Button buttonBack;
+    protected TextView textViewText;
+    protected TextView textViewLatencyASR;
+    protected TextView textViewLatencyTTS;
+
+    private final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
 
     @Override
     protected void onDestroy() {
@@ -136,15 +128,16 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mButton = findViewById(R.id.btnRecognize);
-        mTextView = findViewById(R.id.tv1);
-        mTextView2 = findViewById(R.id.tv2);
-        mRadioGroup = findViewById(R.id.radio);
-        mCheckbox = findViewById(R.id.play_audio);
+        buttonRecord = findViewById(R.id.btnRecognize);
+        buttonPlay = findViewById(R.id.btnPlay);
+        buttonBack = findViewById(R.id.btnBack);
+        textViewText = findViewById(R.id.tvText);
+        textViewLatencyASR = findViewById(R.id.tvLatencyASR);
+        textViewLatencyTTS = findViewById(R.id.tvLatencyTTS);
 
         state = new State(this);
 
-        mButton.setOnTouchListener((v, event) -> {
+        buttonRecord.setOnTouchListener((v, event) -> {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     // Handle button press
@@ -152,10 +145,9 @@ public class MainActivity extends AppCompatActivity implements Runnable {
                     Thread thread = new Thread(MainActivity.this);
                     thread.start();
                     return true; // Indicate the event is handled
-
                 case MotionEvent.ACTION_UP:
                     // Handle button release
-                    if(state.is(StateOption.RECORDING)) {
+                    if (state.state == StateOption.RECORDING) {
                         state.set(StateOption.RECOGNIZING);
                     }
                     return true; // Indicate the event is handled
@@ -163,53 +155,35 @@ public class MainActivity extends AppCompatActivity implements Runnable {
             return false;
         });
 
-        mRadioGroup.setOnCheckedChangeListener((group, checkedId) -> {
-            Thread thread = new Thread(this::load_model);
-            thread.start();
+        buttonPlay.setOnClickListener(view -> new Thread(this::playPcmAudio).start());
+
+        buttonBack.setOnClickListener(view -> {
+            String text = (String)textViewText.getText();
+            int lastSpaceIndex = text.trim().lastIndexOf(' ');
+            if (lastSpaceIndex != -1) {
+                text = text.substring(0, lastSpaceIndex);
+                state.set(StateOption.SILENCE, text, null);
+                queue.add(text);
+            }
         });
 
-        Thread thread = new Thread(this::load_model);
-        thread.start();
+        new Thread(() -> {
+            while (true) {
+                String transcript;
+                try {
+                    transcript = queue.poll(Long.MAX_VALUE, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                String res;
+                while((res = queue.poll()) != null) {
+                    transcript = res;
+                }
+                generate(transcript);
+            }
+        }).start();
 
         requestMicrophonePermission();
-    }
-
-    private void load_model() {
-        if (this.mRadioGroup.getCheckedRadioButtonId() == R.id.model_kit) {
-            return;
-        }
-
-        state.set(StateOption.LOADING);
-
-        if (ortSession != null) {
-            try {
-                ortSession.close();
-                ortSession = null;
-            } catch (OrtException e) {
-                e.printStackTrace();
-            }
-        }
-        try {
-            ortEnvironment = OrtEnvironment.getEnvironment();
-            OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
-            sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath());
-            sessionOptions.addNnapi();
-
-            String model_name;
-            if (this.mRadioGroup.getCheckedRadioButtonId() == R.id.model_small) {
-                model_name = "model_small_doehring.onnx";
-            } else if (this.mRadioGroup.getCheckedRadioButtonId() == R.id.model_large) {
-                model_name = "model_large-v3_doehring.onnx";
-            } else {
-                throw new RuntimeException();
-            }
-            String model_path = assetFilePath(getApplicationContext(), model_name);
-            ortSession = ortEnvironment.createSession(model_path, sessionOptions);
-        } catch (OrtException e) {
-            e.printStackTrace();
-        }
-
-        state.set(StateOption.WAITING);
     }
 
     private void requestMicrophonePermission() {
@@ -218,28 +192,6 @@ public class MainActivity extends AppCompatActivity implements Runnable {
             requestPermissions(
                     new String[]{android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.INTERNET}, REQUEST_RECORD_AUDIO);
         }
-    }
-
-    private String assetFilePath(Context context, String assetName) {
-        File file = new File(context.getFilesDir(), assetName);
-        if (file.exists() && file.length() > 0) {
-            return file.getAbsolutePath();
-        }
-
-        try (InputStream is = context.getAssets().open(assetName)) {
-            try (OutputStream os = new FileOutputStream(file)) {
-                byte[] buffer = new byte[4 * 1024];
-                int read;
-                while ((read = is.read(buffer)) != -1) {
-                    os.write(buffer, 0, read);
-                }
-                os.flush();
-            }
-            return file.getAbsolutePath();
-        } catch (IOException e) {
-            Log.e(TAG, assetName + ": " + e.getLocalizedMessage());
-        }
-        return null;
     }
 
     public static float[] convertListToFloatArray(List<Short> floatList) {
@@ -276,14 +228,13 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         short[] audioBuffer = new short[bufferSize / 2];
         List<Short> recordingBuffer = new ArrayList<>();
 
-        while (state.is(StateOption.RECORDING) && shortsRead < RECORDING_LENGTH_MAX) {
+        while (state.state == StateOption.RECORDING && shortsRead < RECORDING_LENGTH_MAX) {
             int numberOfShort = record.read(audioBuffer, 0, audioBuffer.length);
             shortsRead += numberOfShort;
             for (int i = 0; i < numberOfShort; ++i) {
                 recordingBuffer.add(audioBuffer[i]);
             }
         }
-        state.set(StateOption.RECOGNIZING);
 
         record.stop();
         record.release();
@@ -294,159 +245,95 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         final String transcript = recognize(floatInputBuffer);
         long endTime = System.currentTimeMillis();
 
-        mTextView2.setText(String.format("Latenz ASR: %.2f s",(endTime-startTime)/1000f));
+        String latency = String.format("Latenz ASR: %.2f s",(endTime-startTime)/1000f);
+        state.set(StateOption.SILENCE, transcript, latency);
 
-        if (mCheckbox.isChecked()) {
-            play(transcript);
-        }
-
-        state.set(StateOption.WAITING, transcript);
+        queue.add(transcript);
     }
 
     private String recognize(float[] floatInputBuffer) {
         String transcript = "ERROR";
 
-        if (this.mRadioGroup.getCheckedRadioButtonId() == R.id.model_kit) {
-            Gson gson = new Gson();
-            float[] floatSend = new float[floatInputBuffer.length];
-            for (int i=0; i<floatInputBuffer.length; i++) {
-                floatSend[i] = floatInputBuffer[i] / 128;
-            }
-            String jsonArray = gson.toJson(floatSend);
-
-            MediaType JSON = MediaType.get("application/json; charset=utf-8");
-            RequestBody body = RequestBody.create(jsonArray, JSON);
-
-            Request request = new Request.Builder()
-                .url("https://lt2srv-backup.iar.kit.edu/webapi/asr_inference_doehring")
-                .post(body)
-                .build();
-
-            OkHttpClient client = new OkHttpClient();
-
-            try (Response response = client.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    throw new IOException("Unexpected code " + response);
-                }
-
-                // Process the response
-                transcript = response.body().string();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-            return transcript;
+        Gson gson = new Gson();
+        float[] floatSend = new float[floatInputBuffer.length];
+        for (int i=0; i<floatInputBuffer.length; i++) {
+            floatSend[i] = floatInputBuffer[i] / 128;
         }
+        String jsonArray = gson.toJson(floatSend);
 
-        try {
-            Map<String, OnnxTensor> inputMap = new HashMap<>();
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(jsonArray, JSON);
 
-            FloatBuffer audioBuffer = FloatBuffer.wrap(floatInputBuffer);
-            OnnxTensor audioStreamTensor = OnnxTensor.createTensor(ortEnvironment, audioBuffer, new long[]{1, floatInputBuffer.length});
-            inputMap.put("audio_pcm", audioStreamTensor);
+        Request request = new Request.Builder()
+            .url("https://lt2srv-backup.iar.kit.edu/webapi/asr_inference_doehring")
+            .post(body)
+            .build();
 
-            inputMap.put("max_length", OnnxTensor.createTensor(ortEnvironment,
-                    IntBuffer.wrap(new int[] {80}),
-                    new long[]{1}));
-            inputMap.put("min_length", OnnxTensor.createTensor(ortEnvironment,
-                    IntBuffer.wrap(new int[] {0}),
-                    new long[]{1}));
-            inputMap.put("num_beams", OnnxTensor.createTensor(ortEnvironment,
-                    IntBuffer.wrap(new int[] {4}),
-                    new long[]{1}));
-            inputMap.put("num_return_sequences", OnnxTensor.createTensor(ortEnvironment,
-                    IntBuffer.wrap(new int[] {1}),
-                    new long[]{1}));
-            inputMap.put("length_penalty", OnnxTensor.createTensor(ortEnvironment,
-                    FloatBuffer.wrap(new float[] {1.0f}),
-                    new long[]{1}));
-            inputMap.put("repetition_penalty", OnnxTensor.createTensor(ortEnvironment,
-                    FloatBuffer.wrap(new float[] {1.0f}),
-                    new long[]{1}));
-            int[] decoder_input_ids;
-            if (this.mRadioGroup.getCheckedRadioButtonId() == R.id.model_small) {
-                decoder_input_ids = new int[] {50258, 50261, 50359, 50363};
+        OkHttpClient client = new OkHttpClient();
 
-            } else if (this.mRadioGroup.getCheckedRadioButtonId() == R.id.model_large) {
-                decoder_input_ids = new int[] {50258, 50261, 50360, 50364};
-            } else {
-                throw new RuntimeException();
-            }
-            inputMap.put("decoder_input_ids", OnnxTensor.createTensor(ortEnvironment,
-                    IntBuffer.wrap(decoder_input_ids),
-                    new long[]{1,4})); // en: 50259, de: 50261
-
-            OrtSession.Result result = ortSession.run(inputMap);
-
-            // Assuming model output is a tensor of strings
-            OnnxValue outputValue = result.get(0);
-            if (outputValue instanceof OnnxTensor) {
-                OnnxTensor outputTensor = (OnnxTensor) outputValue;
-                // Assuming the output is a string tensor
-                String[][] outputStrings = (String[][]) outputTensor.getValue();
-                transcript = outputStrings[0][0]; // Get the first transcription
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Unexpected code " + response);
             }
 
-            // Release resources
-            result.close();
-        } catch (OrtException e) {
+            // Process the response
+            transcript = response.body().string();
+        } catch (IOException e) {
             e.printStackTrace();
         }
 
         return transcript;
     }
 
-    private void play(String text) {
+    private void generate(String text) {
+        state.set(StateOption.GENERATING);
+
         long startTime = System.currentTimeMillis();
 
-        if (true) { //this.mRadioGroup.getCheckedRadioButtonId() == R.id.model_kit) {
-            String url = "https://lt2srv-backup.iar.kit.edu/webapi/tts_inference_doehring";
-            MediaType JSON = MediaType.get("application/json; charset=utf-8");
-            String json = "{\"text\": \"" + text + "\"}";
+        String url = "https://lt2srv-backup.iar.kit.edu/webapi/tts_inference_doehring";
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        String json = "{\"text\": \"" + text + "\"}";
 
-            RequestBody body = RequestBody.create(json, JSON);
-            Request request = new Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .build();
+        RequestBody body = RequestBody.create(json, JSON);
+        Request request = new Request.Builder()
+                .url(url)
+                .post(body)
+                .build();
 
-            OkHttpClient client = new OkHttpClient();
+        OkHttpClient client = new OkHttpClient();
 
-            new Thread(() -> {
-                try (Response response = client.newCall(request).execute()) {
-                    if (response.isSuccessful()) {
-                        JSONObject responseJson = new JSONObject(response.body().string());
-                        String base64Audio = responseJson.getString("audio");
+        new Thread(() -> {
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful()) {
+                    JSONObject responseJson = new JSONObject(response.body().string());
+                    String base64Audio = responseJson.getString("audio");
 
-                        // Decode the Base64 string to raw PCM data
-                        byte[] audioData = Base64.decode(base64Audio, Base64.DEFAULT);
+                    // Decode the Base64 string to raw PCM data
+                    audioData = Base64.decode(base64Audio, Base64.DEFAULT);
 
-                        add_latency_to_textfield(startTime);
-
-                        // Play the decoded audio data
-                        playPcmAudio(audioData);
-                    } else {
-                        System.err.println("Request failed: " + response.code());
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
+                    long endTime = System.currentTimeMillis();
+                    String latency = String.format("Latenz TTS: %.2f s",(endTime-startTime)/1000f);
+                    state.set(StateOption.SILENCE, null, latency);
+                } else {
+                    System.err.println("Request failed: " + response.code());
                 }
-            }).start();
-        } else {
-            throw new RuntimeException(); // TODO: implement
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
 
-            //add_latency_to_textfield(startTime);
+    private void playPcmAudio() {
+        if(audioData == null) {
+            return;
         }
-    }
 
-    private void add_latency_to_textfield(long startTime) {
-        long endTime = System.currentTimeMillis();
-        String asr_text = (String) mTextView2.getText();
-        asr_text += String.format(", Latenz TTS: %.2f s",(endTime-startTime)/1000f);
-        mTextView2.setText(asr_text);
-    }
+        if(state.state == StateOption.PLAYING) {
+            state.set(StateOption.SILENCE);
+            return;
+        }
+        state.set(StateOption.PLAYING);
 
-    private void playPcmAudio(byte[] audioData) {
         int sampleRate = 16000; // Set the correct sample rate
         int channelConfig = AudioFormat.CHANNEL_OUT_MONO;
         int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
@@ -466,8 +353,21 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         audioTrack.play();
 
         // Write audio data to AudioTrack
-        audioTrack.write(audioData, 0, audioData.length);
+        int offset = 0;
+        while (state.state == StateOption.PLAYING) {
+            int chunkSize = Math.min(bufferSize, audioData.length - offset);
+            audioTrack.write(audioData, offset, chunkSize);
+
+            offset += chunkSize;
+            if (offset >= audioData.length) {
+                break;
+            }
+        }
         audioTrack.stop();
         audioTrack.release();
+
+        if(state.state == StateOption.PLAYING) {
+            state.set(StateOption.SILENCE);
+        }
     }
 }
