@@ -1,6 +1,9 @@
 package org.pytorch.demo.speechrecognition;
 
+import static android.view.View.VISIBLE;
+
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -12,12 +15,15 @@ import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.EditText;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
 
@@ -31,12 +37,13 @@ import com.google.gson.Gson;
 
 import org.json.JSONObject;
 
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 enum StateOption {
-    INIT, RECORDING, RECOGNIZING, GENERATING, PLAYING, SILENCE
+    INIT, RECORDING, RECOGNIZING, GENERATING, PLAYING, SILENCE, EDITING
 }
 
 class State {
@@ -60,11 +67,13 @@ class State {
                     this.main.buttonRecord.setText("gedrückt halten um weiter aufzunehmen...");
                     this.main.buttonPlay.setEnabled(false);
                     this.main.buttonBack.setEnabled(false);
+                    this.main.buttonCorrect.setEnabled(false);
                     break;
                 case RECOGNIZING:
                     this.main.buttonRecord.setEnabled(false);
                     this.main.buttonPlay.setEnabled(false);
                     this.main.buttonBack.setEnabled(false);
+                    this.main.buttonCorrect.setEnabled(false);
                     if(!back_pressed) {
                         this.main.textViewText.setText("");
                     }
@@ -85,7 +94,11 @@ class State {
                 case SILENCE:
                     if(result != null) {
                         String text = result;
+                        boolean enabled = false;
                         if(latency != null) { // ASR finished
+                            if(this.main.textViewText.getText().equals("")) {
+                                enabled = true;
+                            }
                             if(back_pressed) {
                                 text = this.main.textViewText.getText()+" "+lowercaseFirstLetter(result);
                             }
@@ -98,6 +111,7 @@ class State {
                         this.main.queue.add(text);
                         this.main.buttonPlay.setEnabled(false);
                         this.main.buttonBack.setEnabled(true);
+                        this.main.buttonCorrect.setEnabled(enabled);
                         this.main.buttonRecord.setText("drücken und gedrückt halten zum Aufnehmen");
                     } else if (latency != null) { // TTS finished
                         this.main.textViewLatencyTTS.setText(latency);
@@ -109,9 +123,77 @@ class State {
                         this.main.buttonPlay.setText("abspielen");
                     }
                     break;
+                case EDITING:
+                    String text = (String)this.main.textViewText.getText();
+                    if(!text.equals("")) { // go to correction mode
+                        this.main.textViewText.setText("");
+                        this.main.textViewCorrect.setText(text);
+                        this.main.textViewText.setVisibility(View.INVISIBLE);
+                        this.main.textViewCorrect.setVisibility(VISIBLE);
+                        this.main.buttonCorrect.setText("fertig");
+                        this.main.buttonRecord.setEnabled(false);
+                        this.main.buttonBack.setEnabled(false);
+                        this.main.buttonPlay.setEnabled(false);
+                    } else { // correction finished
+                        String new_text = this.main.textViewCorrect.getText().toString();
+                        this.main.buttonCorrect.setText("korrigieren");
+                        this.main.textViewText.setText(new_text);
+                        this.main.textViewText.setVisibility(VISIBLE);
+                        this.main.textViewCorrect.setVisibility(View.INVISIBLE);
+                        this.main.queue.add(new_text);
+                        this.main.buttonRecord.setEnabled(true);
+                        //this.main.buttonBack.setEnabled(true);
+                        this.main.buttonPlay.setEnabled(true);
+
+                        AlertDialog.Builder builder = new AlertDialog.Builder(this.main);
+                        builder.setTitle("Frage:");
+                        builder.setMessage("Soll aus diesem Beispiel gelernt werden? (das kann nicht rückgängig gemacht werden!)");
+
+                        // Add "Yes" button and execute method if clicked
+                        builder.setPositiveButton("Ja", (dialog, which) -> {
+                            new Thread(() -> send_sample(this.main.lastAudio, new_text)).start();
+                        });
+                        builder.setNegativeButton("Nein", (dialog, which) -> {
+                            dialog.dismiss();
+                        });
+
+                        builder.create().show();
+                    }
+                    break;
             }
         });
         state = new_state;
+    }
+
+    public void send_sample(float[] audio, String transcript) {
+        Map<String, Object> jsonMap = new HashMap<>();
+        jsonMap.put("audio", audio);
+        jsonMap.put("transcript", transcript);
+
+        Gson gson = new Gson();
+        String jsonArray = gson.toJson(jsonMap);
+
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(jsonArray, JSON);
+        Request request = new Request.Builder()
+                .url("https://lt2srv-backup.iar.kit.edu/webapi/asr_label_doehring")
+                .post(body)
+                .build();
+
+        OkHttpClient client = new OkHttpClient();
+
+        // Send the request and process the response
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Unexpected code " + response);
+            }
+
+            // Process the response
+            //String responseBody = response.body().string();
+            //System.out.println("Response: " + responseBody);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static String lowercaseFirstLetter(String input) {
@@ -131,9 +213,13 @@ public class MainActivity extends AppCompatActivity implements Runnable {
     protected Button buttonRecord;
     protected Button buttonPlay;
     protected Button buttonBack;
+    protected Button buttonCorrect;
     protected TextView textViewText;
     protected TextView textViewLatencyASR;
     protected TextView textViewLatencyTTS;
+    protected EditText textViewCorrect;
+
+    protected float[] lastAudio;
 
     protected final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
 
@@ -151,9 +237,12 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         buttonRecord = findViewById(R.id.btnRecognize);
         buttonPlay = findViewById(R.id.btnPlay);
         buttonBack = findViewById(R.id.btnBack);
+        buttonCorrect = findViewById(R.id.btnCorrect);
+
         textViewText = findViewById(R.id.tvText);
         textViewLatencyASR = findViewById(R.id.tvLatencyASR);
         textViewLatencyTTS = findViewById(R.id.tvLatencyTTS);
+        textViewCorrect = findViewById(R.id.tvEdit);
 
         state = new State(this);
 
@@ -176,6 +265,8 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         });
 
         buttonPlay.setOnClickListener(view -> new Thread(this::playPcmAudio).start());
+
+        buttonCorrect.setOnClickListener(view -> state.set(StateOption.EDITING));
 
         buttonBack.setOnClickListener(view -> {
             String text = (String)textViewText.getText();
@@ -279,6 +370,7 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         for (int i=0; i<floatInputBuffer.length; i++) {
             floatSend[i] = floatInputBuffer[i] / 128;
         }
+        lastAudio = floatSend;
         String jsonArray = gson.toJson(floatSend);
 
         MediaType JSON = MediaType.get("application/json; charset=utf-8");

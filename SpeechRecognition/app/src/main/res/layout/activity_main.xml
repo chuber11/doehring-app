@@ -16,11 +16,12 @@
         android:textSize="25sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.501"
         app:layout_constraintStart_toStartOf="parent" />
 
     <Button
         android:id="@+id/btnPlay"
-        android:layout_width="195dp"
+        android:layout_width="135dp"
         android:layout_height="77dp"
         android:enabled="false"
         android:text="abspielen"
@@ -28,14 +29,28 @@
         android:textSize="25sp"
         app:layout_constraintBottom_toTopOf="@+id/btnRecognize"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.127"
+        app:layout_constraintHorizontal_bias="0.01"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvLatencyASR"
+        app:layout_constraintVertical_bias="0.8" />
+
+    <Button
+        android:id="@+id/btnCorrect"
+        android:layout_width="145dp"
+        android:layout_height="77dp"
+        android:enabled="false"
+        android:text="korrigieren"
+        android:textAllCaps="false"
+        android:textSize="25sp"
+        app:layout_constraintBottom_toTopOf="@+id/btnRecognize"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tvLatencyASR"
         app:layout_constraintVertical_bias="0.8" />
 
     <Button
         android:id="@+id/btnBack"
-        android:layout_width="195dp"
+        android:layout_width="135dp"
         android:layout_height="77dp"
         android:enabled="false"
         android:text="zurück"
@@ -43,7 +58,7 @@
         android:textSize="25sp"
         app:layout_constraintBottom_toTopOf="@+id/btnRecognize"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.868"
+        app:layout_constraintHorizontal_bias="0.989"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tvLatencyASR"
         app:layout_constraintVertical_bias="0.8" />
@@ -55,6 +70,21 @@
         android:layout_marginTop="56dp"
         android:gravity="center"
         android:hint=""
+        android:textAlignment="center"
+        android:textSize="25sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.493"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <EditText
+        android:id="@+id/tvEdit"
+        android:layout_width="338dp"
+        android:layout_height="416dp"
+        android:layout_marginTop="56dp"
+        android:gravity="center"
+        android:hint=""
+        android:visibility="invisible"
         android:textAlignment="center"
         android:textSize="25sp"
         app:layout_constraintEnd_toEndOf="parent"
