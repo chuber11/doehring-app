@@ -8,10 +8,10 @@
 
     <Button
         android:id="@+id/btnRecognize"
-        android:layout_width="339dp"
+        android:layout_width="720dp"
         android:layout_height="82dp"
         android:layout_marginBottom="16dp"
-        android:text="Drücken und gedrückt halten zum Aufnehmen"
+        android:text="drücken und gedrückt halten zum Aufnehmen"
         android:textAllCaps="false"
         android:textSize="25sp"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -20,10 +20,10 @@
 
     <Button
         android:id="@+id/btnPlay"
-        android:layout_width="167dp"
+        android:layout_width="195dp"
         android:layout_height="77dp"
         android:enabled="false"
-        android:text="Abspielen"
+        android:text="abspielen"
         android:textAllCaps="false"
         android:textSize="25sp"
         app:layout_constraintBottom_toTopOf="@+id/btnRecognize"
@@ -35,10 +35,10 @@
 
     <Button
         android:id="@+id/btnBack"
-        android:layout_width="167dp"
+        android:layout_width="195dp"
         android:layout_height="77dp"
         android:enabled="false"
-        android:text="Zurück"
+        android:text="zurück"
         android:textAllCaps="false"
         android:textSize="25sp"
         app:layout_constraintBottom_toTopOf="@+id/btnRecognize"

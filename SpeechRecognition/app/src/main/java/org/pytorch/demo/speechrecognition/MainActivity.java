@@ -41,6 +41,7 @@ enum StateOption {
 
 class State {
     protected StateOption state = StateOption.INIT;
+    private boolean back_pressed = false;
     private MainActivity main;
 
     public State(MainActivity main) {
@@ -53,8 +54,10 @@ class State {
     public void set(StateOption new_state, String result, String latency) {
         main.runOnUiThread(() -> {
             switch(new_state) {
+                case INIT:
+                    break;
                 case RECORDING:
-                    this.main.buttonRecord.setText("Gedrückt halten um weiter aufzunehmen...");
+                    this.main.buttonRecord.setText("gedrückt halten um weiter aufzunehmen...");
                     this.main.buttonPlay.setEnabled(false);
                     this.main.buttonBack.setEnabled(false);
                     break;
@@ -62,7 +65,9 @@ class State {
                     this.main.buttonRecord.setEnabled(false);
                     this.main.buttonPlay.setEnabled(false);
                     this.main.buttonBack.setEnabled(false);
-                    this.main.textViewText.setText("");
+                    if(!back_pressed) {
+                        this.main.textViewText.setText("");
+                    }
                     this.main.textViewLatencyASR.setText("");
                     this.main.textViewLatencyTTS.setText("");
                     this.main.buttonRecord.setText("Audio wird transkribiert...");
@@ -71,34 +76,49 @@ class State {
                     this.main.buttonRecord.setEnabled(false);
                     this.main.buttonRecord.setText("Audio wird generiert...");
                     this.main.buttonPlay.setEnabled(false);
-                    this.main.buttonPlay.setText("Abspielen");
+                    this.main.buttonPlay.setText("abspielen");
                     break;
                 case PLAYING:
-                    this.main.buttonPlay.setText("Stop");
-                    this.main.buttonRecord.setText("Drücken und gedrückt halten zum Aufnehmen");
+                    this.main.buttonPlay.setText("stop");
+                    this.main.buttonRecord.setText("drücken und gedrückt halten zum Aufnehmen");
                     break;
                 case SILENCE:
-                    if(result != null) { // ASR finished
-                        this.main.textViewText.setText(result);
-                        if(latency != null) {
+                    if(result != null) {
+                        String text = result;
+                        if(latency != null) { // ASR finished
+                            if(back_pressed) {
+                                text = this.main.textViewText.getText()+" "+lowercaseFirstLetter(result);
+                            }
+                            back_pressed = false;
                             this.main.textViewLatencyASR.setText(latency);
+                        } else { // Back button pressed
+                            back_pressed = true;
                         }
+                        this.main.textViewText.setText(text);
+                        this.main.queue.add(text);
                         this.main.buttonPlay.setEnabled(false);
                         this.main.buttonBack.setEnabled(true);
-                        this.main.buttonRecord.setText("Drücken und gedrückt halten zum Aufnehmen");
+                        this.main.buttonRecord.setText("drücken und gedrückt halten zum Aufnehmen");
                     } else if (latency != null) { // TTS finished
                         this.main.textViewLatencyTTS.setText(latency);
                         this.main.buttonRecord.setEnabled(true);
                         this.main.buttonPlay.setEnabled(true);
-                        this.main.buttonRecord.setText("Drücken und gedrückt halten zum Aufnehmen");
-                        this.main.buttonPlay.setText("Abspielen");
+                        this.main.buttonRecord.setText("drücken und gedrückt halten zum Aufnehmen");
+                        this.main.buttonPlay.setText("abspielen");
                     } else { // Playing finished
-                        this.main.buttonPlay.setText("Abspielen");
+                        this.main.buttonPlay.setText("abspielen");
                     }
                     break;
             }
         });
         state = new_state;
+    }
+
+    public static String lowercaseFirstLetter(String input) {
+        if (input == null || input.isEmpty()) {
+            return input; // Return as is if the string is null or empty
+        }
+        return input.substring(0, 1).toLowerCase() + input.substring(1);
     }
 }
 
@@ -115,7 +135,7 @@ public class MainActivity extends AppCompatActivity implements Runnable {
     protected TextView textViewLatencyASR;
     protected TextView textViewLatencyTTS;
 
-    private final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+    protected final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
 
     @Override
     protected void onDestroy() {
@@ -162,9 +182,11 @@ public class MainActivity extends AppCompatActivity implements Runnable {
             int lastSpaceIndex = text.trim().lastIndexOf(' ');
             if (lastSpaceIndex != -1) {
                 text = text.substring(0, lastSpaceIndex);
-                state.set(StateOption.SILENCE, text, null);
-                queue.add(text);
+            } else {
+                text = "";
             }
+            state.set(StateOption.SILENCE, text, null);
+            queue.add(text);
         });
 
         new Thread(() -> {
@@ -247,8 +269,6 @@ public class MainActivity extends AppCompatActivity implements Runnable {
 
         String latency = String.format("Latenz ASR: %.2f s",(endTime-startTime)/1000f);
         state.set(StateOption.SILENCE, transcript, latency);
-
-        queue.add(transcript);
     }
 
     private String recognize(float[] floatInputBuffer) {
@@ -310,16 +330,16 @@ public class MainActivity extends AppCompatActivity implements Runnable {
 
                     // Decode the Base64 string to raw PCM data
                     audioData = Base64.decode(base64Audio, Base64.DEFAULT);
-
-                    long endTime = System.currentTimeMillis();
-                    String latency = String.format("Latenz TTS: %.2f s",(endTime-startTime)/1000f);
-                    state.set(StateOption.SILENCE, null, latency);
                 } else {
                     System.err.println("Request failed: " + response.code());
                 }
             } catch (Exception e) {
                 e.printStackTrace();
             }
+
+            long endTime = System.currentTimeMillis();
+            String latency = String.format("Latenz TTS: %.2f s",(endTime-startTime)/1000f);
+            state.set(StateOption.SILENCE, null, latency);
         }).start();
     }
 
